@@ -235,3 +235,9 @@ class _Cell:
 
     def get_block(self):
         return self.__block
+
+    def get(row, col):
+        """Возвращает тип блока в указанной позиции"""
+        if 0 <= row < len(_map) and 0 <= col < len(_map[0]):
+            return _map[row][col]
+        return None

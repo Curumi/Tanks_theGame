@@ -1,9 +1,13 @@
 import missiles_collection
 from tank import Tank
 from tkinter import *
+import missiles_collection
+import tanks_collection
+import world
+
 
 from player import Player  # Импортируем класс игрока
-from battlepass import BattlePassMenu  # Импортируем класс батлпаса
+
 
 import world
 import tanks_collection
@@ -15,16 +19,17 @@ KEY_W = 87
 KEY_S = 83
 KEY_A = 65
 KEY_D = 68
+KEY_Q = 81  # Исправлено: было 169, должно быть 81 для клавиши Q
 FPS = 60
 
 
 def update():
     tanks_collection.update()
     missiles_collection.update()
+    # Передаем список танков
+    missiles_collection.update_hooks(tanks_collection.get_tanks())
+
     player = tanks_collection.get_player()
-
-
-
     world.set_camera_xy(player.get_x() - world.SCREEN_WIDTH // 2 + player.get_size() // 2,
                         player.get_y() - world.SCREEN_HEIGHT // 2 + player.get_size() // 2)
     world.update_map()
@@ -35,6 +40,7 @@ def key_press(event):
     player = tanks_collection.get_player()
     if player.is_destroyed():
         return
+
     if event.keycode == KEY_W:
         player.forward()
     elif event.keycode == KEY_S:
@@ -43,17 +49,13 @@ def key_press(event):
         player.left()
     elif event.keycode == KEY_D:
         player.right()
-    elif event.keycode == KEY_UP:
-        world.move_camera(0, -5)
-    elif event.keycode == KEY_DOWN:
-        world.move_camera(0, 5)
-    elif event.keycode == KEY_LEFT:
-        world.move_camera(-5, 0)
-    elif event.keycode == KEY_RIGHT:
-        world.move_camera(5, 0)
-    elif event.keycode == 32:
-        print('Fire')
+    elif event.keycode == KEY_SPACE:
         player.fire()
+    elif event.keycode == KEY_Q:
+        if player.fire_hook():
+            print("Хук выпущен!")
+        else:
+            print("Хук на перезарядке!")
 
 
 def load_textures():
@@ -92,6 +94,11 @@ def load_textures():
     texture.load('0', '../img/0.png')
 
     texture.load('tank_destroy', '../img/tank_destroy.png')
+
+    texture.load('hook_up', '../img/hook_up.png')
+    texture.load('hook_down', '../img/hook_down.png')
+    texture.load('hook_left', '../img/hook_left.png')
+    texture.load('hook_right', '../img/hook_right.png')
 
 
 
@@ -186,17 +193,11 @@ w = Tk()
 w.title('Танки на минималках 2.0')
 w.geometry(f"{world.SCREEN_WIDTH}x{world.SCREEN_HEIGHT}")
 
-
 load_textures()
-
 
 canv = Canvas(w, width=world.SCREEN_WIDTH, height=world.SCREEN_HEIGHT, bg='light green')
 
-
 menu = Menu(w, start_game, exit_game)
-
-
 menu.show()
-
 
 w.mainloop()

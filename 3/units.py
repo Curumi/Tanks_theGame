@@ -221,6 +221,9 @@ class Tank(Unit):
         self._last_shot_time = 0  # Время последнего выстрела
         self._shot_delay = 1  # Задержка между выстрелами в секундах (например, 1 секунда)
 
+        self._last_hook_time = 0
+        self._hook_cooldown = 5  # 5 секунд перезарядки хука
+
 
 
         if bot:
@@ -241,6 +244,16 @@ class Tank(Unit):
         self._usual_speed = self._speed
         self._water_speed = self._speed // 2
         self._target = None
+
+    def fire_hook(self):
+        current_time = time.time()
+        if current_time - getattr(self, '_last_hook_time', 0) >= 5:
+            from missiles_collection import fire_hook
+            fire_hook(self)  # self передается как владелец хука
+            self._last_hook_time = current_time
+            return True
+        return False
+
 
     def destroy(self):
         # Удаление хп-бара после уничтожения
@@ -351,6 +364,15 @@ class Tank(Unit):
                 self.backward()
                 self.fire()
 
+    def is_stunned(self):
+        return hasattr(self, '_stun_end_time') and time.time() < self._stun_end_time
+
+    def update(self):
+        if self.is_stunned():
+            return  # Не обновляем позицию если танк оглушен
+
+        super().update()
+
 
 class Missile(Unit):
     def __init__(self, canvas, owner):
@@ -384,3 +406,162 @@ class Missile(Unit):
             self.destroy()
         if world.CONCRETE in details:
             self.destroy()
+
+
+class Hook(Unit):
+    def __init__(self, canvas, owner):
+        super().__init__(canvas, owner.get_x(), owner.get_y(),
+                         8, 20, False, 'hook_up')
+        self._owner = owner
+        self._forward_image = 'hook_up'
+        self._backward_image = 'hook_down'
+        self._left_image = 'hook_left'
+        self._right_image = 'hook_right'
+        self._hooked_target = None
+        self._returning = False
+        self._max_distance = 500
+        self._distance_traveled = 0
+        self._hook_speed = 8
+        self._chain_id = None
+        self._hitbox.set_blacklist([world.BRICK, world.CONCRETE])
+
+        # Направление хука
+        if owner.get_vx() == 1 and owner.get_vy() == 0:
+            self.right()
+        elif owner.get_vx() == -1 and owner.get_vy() == 0:
+            self.left()
+        elif owner.get_vx() == 0 and owner.get_vy() == -1:
+            self.forward()
+        elif owner.get_vx() == 0 and owner.get_vy() == 1:
+            self.backward()
+
+        # Начальная позиция хука
+        self._x += owner.get_vx() * self.get_size() // 2
+        self._y += owner.get_vy() * self.get_size() // 2
+
+    def update(self):
+        if self._hooked_target:
+            self._pull_target()
+        elif not self._returning:
+            # Перед движением проверяем столкновения
+            if not self._check_collisions():
+                super().update()
+                self._distance_traveled += self._speed
+                if self._distance_traveled >= self._max_distance:
+                    self._start_returning()
+        else:
+            self._return_to_owner()
+
+    def _pull_target(self):
+        if self._hooked_target is None or self._hooked_target.is_destroyed():
+            self._start_returning()
+            return
+
+        owner = self._owner
+        target = self._hooked_target
+
+        # Упрощенная проверка препятствий (можно закомментировать, если вызывает проблемы)
+        # if self._has_obstacles_between(owner, target):
+        #     self._start_returning()
+        #     return
+
+        dx = owner.get_x() - target.get_x()
+        dy = owner.get_y() - target.get_y()
+        distance = (dx ** 2 + dy ** 2) ** 0.5
+
+        if distance < 20:
+            target.destroy()
+            self.destroy()
+            return
+
+        dx = dx / distance * self._hook_speed
+        dy = dy / distance * self._hook_speed
+
+        target._x += dx
+        target._y += dy
+        target._update_hitbox()
+
+        self._x = target.get_x()
+        self._y = target.get_y()
+        self._update_hitbox()
+
+        target._repaint()
+        self._repaint()
+
+    def _has_obstacles_between(self, unit1, unit2):
+        """Проверяет наличие препятствий между двумя юнитами"""
+        x1 = unit1.get_x() + unit1.get_size() // 2
+        y1 = unit1.get_y() + unit1.get_size() // 2
+        x2 = unit2.get_x() + unit2.get_size() // 2
+        y2 = unit2.get_y() + unit2.get_size() // 2
+
+        # Проверяем несколько точек вдоль линии между юнитами
+        steps = 10
+        for i in range(1, steps):
+            x = x1 + (x2 - x1) * i / steps
+            y = y1 + (y2 - y1) * i / steps
+            col = world.get_col(x)
+            row = world.get_row(y)
+            cell_type = world._map[row][col] if 0 <= row < len(world._map) and 0 <= col < len(world._map[0]) else None
+            if cell_type in [world.BRICK, world.CONCRETE]:
+                return True
+        return False
+
+    def _start_returning(self):
+        self._returning = True
+        if self._hooked_target:
+            self._hooked_target = None  # Отпускаем цель при возвращении
+        self.stop()
+
+    def _return_to_owner(self):
+        owner_x = self._owner.get_x() + self._owner.get_size() // 2
+        owner_y = self._owner.get_y() + self._owner.get_size() // 2
+        hook_x = self._x + self.get_size() // 2
+        hook_y = self._y + self.get_size() // 2
+
+        dx = owner_x - hook_x
+        dy = owner_y - hook_y
+        distance = (dx ** 2 + dy ** 2) ** 0.5
+
+        if distance < 10:
+            self.destroy()
+            return
+
+        speed = self._speed
+        if distance > 0:
+            dx = dx / distance * speed
+            dy = dy / distance * speed
+
+        self._x += dx
+        self._y += dy
+        self._update_hitbox()
+        self._repaint()
+
+    def destroy(self):
+        if self._chain_id:
+            self._canvas.delete(self._chain_id)
+            self._chain_id = None
+        super().destroy()
+
+    def get_owner(self):
+        return self._owner
+
+    def _check_collisions(self):
+        details = {}
+        if self._hitbox.check_map_collision(details):
+            # Если столкнулись с блоком - возвращаем хук
+            if world.BRICK in details or world.CONCRETE in details:
+                self._start_returning()
+                return True
+        return False
+
+    def _on_map_collision(self, details):
+        # При столкновении с кирпичом или бетоном - возвращаем хук
+        if world.BRICK in details or world.CONCRETE in details:
+            self._start_returning()
+            # Можно добавить эффект "удара" о стену
+            self._canvas.create_rectangle(
+                self._x, self._y,
+                self._x + self.get_size(), self._y + self.get_size(),
+                outline="red", width=2
+            )

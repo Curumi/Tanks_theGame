@@ -80,3 +80,6 @@ def spawn(is_bot=True):
         if not check_collision(t):
             _tanks.append(t)
             return t
+
+def get_tanks():
+    return _tanks  # Предполагая, что _tanks - это список всех танков
