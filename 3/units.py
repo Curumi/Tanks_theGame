@@ -338,6 +338,7 @@ class Tank(Unit):
             self._AI_fire()
         elif randint(1,100) == 1:
             self.fire()
+
     def _AI_fire(self):
         if self._target is None:
             return

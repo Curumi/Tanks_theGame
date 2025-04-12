@@ -13,7 +13,8 @@ def initialize(canv):
     global _canvas,id_screen_text
     _canvas = canv
     player = spawn(False)
-    enemy = spawn(True).set_target(player)
+    for i in range(5):
+        enemy = spawn(True).set_target(player)
     spawn(True).set_target(player)
     id_screen_text = _canvas.create_text(10,10,text = _get_screen_text(),
                                          font = ("Arial", 20, "bold"), fill = "black",anchor= NW)
